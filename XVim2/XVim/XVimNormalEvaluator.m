@@ -61,7 +61,6 @@
 - (void)becameHandler
 {
     [super becameHandler];
-    //[self.sourceView xvim_changeSelectionMode:XVIM_VISUAL_NONE];
 }
 
 - (NSString*)modeString { return @""; }
@@ -207,6 +206,11 @@
 - (XVimEvaluator*)C_f
 {
     [[self sourceView] xvim_scrollPageForward:[self numericArg]];
+    return nil;
+}
+
+- (XVimEvaluator*)C_y {
+    [[self sourceView] xvim_scrollLineBackward:[self numericArg]];
     return nil;
 }
 
@@ -469,7 +473,6 @@
                             XVimSearch* searcher = [[XVim instance] searcher];
                             if (searcher.confirmEach && searcher.lastFoundRange.location != NSNotFound) {
                                 [eval didEndHandler];
-                                //[[self sourceView] xvim_changeSelectionMode:XVIM_VISUAL_NONE];
                                 return [[XVimReplacePromptEvaluator alloc]
                                                initWithWindow:self.window
                                             replacementString:searcher.lastReplacementString];
@@ -555,11 +558,6 @@
 
 
 
-- (XVimEvaluator*)C_y{
-    [[self sourceView] xvim_scrollLineBackward:[self numericArg]];
-    return nil;
-}
-
 - (XVimEvaluator*)AT{
     if( [XVim instance].isExecuting ){
         return nil;
@@ -623,7 +621,8 @@
 - (XVimEvaluator*)DOT
 {
     [[XVim instance] startRepeat];
-    EDIT_TRANSACTION_SCOPE(self.sourceView)
+    [self.sourceView xvim_beginEditTransaction];
+    xvim_on_exit { [self.sourceView xvim_endEditTransaction]; };
 
     XVimString* repeatRegister = [[XVim instance] lastOperationCommands];
     TRACE_LOG(@"Repeat:%@", repeatRegister);
