@@ -27,7 +27,7 @@
 
 @interface XVimWindow : NSObject <NSTextInputClient, NSTextFieldDelegate>
 @property (strong, readonly)
-            id<SourceViewProtocol, SourceViewXVimProtocol, SourceViewScrollingProtocol, SourceViewOperationsProtocol>
+            id<SourceViewProtocol, SourceViewXVimProtocol, SourceViewScrollingProtocol, SourceViewOperationsProtocol, NSTextInputClient>
                         sourceView; // This represents currently focused sourceView
 @property (weak, readonly) NSTextView* inputView;
 @property (weak, readonly) XVimEvaluator* currentEvaluator;
@@ -35,6 +35,7 @@
 @property (readonly) XVimCommandLine* commandLine;
 @property (nonatomic, getter=isEnabled) BOOL enabled;
 @property (strong, nonatomic) XVimMark* currentPositionMark;
+@property BOOL scrollHalt;
 
 - (instancetype)initWithEditorView:(id<SourceViewProtocol>)responder;
 - (void)setupAfterEditorViewSetup;
@@ -45,6 +46,8 @@
 - (void)errorMessage:(NSString*)message ringBell:(BOOL)ringBell;
 - (void)statusMessage:(NSString*)message;
 - (void)clearErrorMessage;
+- (void)beginCommandEntry;
+- (void)endCommandEntry;
 
 - (void)setForcusBackToSourceView;
 

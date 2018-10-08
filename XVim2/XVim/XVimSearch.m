@@ -42,11 +42,11 @@
     XVimMotion* m = nil;
     if (forward) {
         XVim.instance.searcher.lastSearchBackword = NO;
-        m = XVIM_MAKE_MOTION(MOTION_SEARCH_FORWARD, CHARACTERWISE_EXCLUSIVE, MOTION_OPTION_NONE, 1);
+        m = XVIM_MAKE_MOTION(MOTION_SEARCH_FORWARD, CHARACTERWISE_EXCLUSIVE, MOPT_NONE, 1);
     }
     else {
         XVim.instance.searcher.lastSearchBackword = YES;
-        m = XVIM_MAKE_MOTION(MOTION_SEARCH_BACKWARD, CHARACTERWISE_EXCLUSIVE, MOTION_OPTION_NONE, 1);
+        m = XVIM_MAKE_MOTION(MOTION_SEARCH_BACKWARD, CHARACTERWISE_EXCLUSIVE, MOPT_NONE, 1);
     }
     m.regex = string;
 
@@ -65,11 +65,11 @@
     }
     // The last case sensitiveness is found at this point
     if (options & NSRegularExpressionCaseInsensitive) {
-        m.option |= SEARCH_CASEINSENSITIVE;
+        m.option |= MOPT_SEARCH_CASEINSENSITIVE;
     }
 
     if ([XVim instance].options.wrapscan) {
-        m.option |= SEARCH_WRAP;
+        m.option |= MOPT_SEARCH_WRAP;
     }
 
     return m;
@@ -361,18 +361,18 @@ if((self.matchStart || self.matchEnd) && found.location != NSNotFound){
         return NSMakeRange(NSNotFound, 0);
     }
 
-    XVimMotionInfo info;
+    XVimMotionInfo* info = [[XVimMotionInfo alloc] init];
     NSUInteger wordStart = searchStart;
     if (wordStart > 0) {
         unichar curChar = [string characterAtIndex:wordStart];
         unichar lastChar = [string characterAtIndex:wordStart - 1];
         if ((isKeyword(curChar) && isKeyword(lastChar))
             || (!isKeyword(curChar) && isNonblank(curChar) && !isKeyword(lastChar) && isNonblank(lastChar))) {
-            wordStart = [view.textStorage wordsBackward:searchStart count:1 option:LEFT_RIGHT_NOWRAP];
+            wordStart = [view.textStorage wordsBackward:searchStart count:1 option:MOPT_LEFT_RIGHT_NOWRAP];
         }
     }
 
-    NSUInteger wordEnd = [view.textStorage wordsForward:wordStart count:1 option:LEFT_RIGHT_NOWRAP info:&info];
+    NSUInteger wordEnd = [view.textStorage wordsForward:wordStart count:1 option:MOPT_LEFT_RIGHT_NOWRAP info:info];
     if (info.lastEndOfWord != NSNotFound) {
         wordEnd = info.lastEndOfWord;
     }
@@ -443,9 +443,11 @@ if (found.location != NSNotFound &&
 
     // search text beyond the search_base
     // Since self.lastSearchCmd may include ^ or $, NSMatchingWithoutAnchoringBounds option needs to set.
-    self.lastFoundRange = [regex rangeOfFirstMatchInString:[srcView string]
+    NSString* str = [srcView string];
+    if (str == nil){ return; }
+    self.lastFoundRange = [regex rangeOfFirstMatchInString:str
                                                    options:NSMatchingWithoutAnchoringBounds
-                                                     range:NSMakeRange(from, [[srcView string] length] - from)];
+                                                     range:NSMakeRange(from, [str length] - from)];
 
     if (self.lastFoundRange.location >= to) {
         self.lastFoundRange = NSMakeRange(NSNotFound, 0);
@@ -531,14 +533,14 @@ if (found.location != NSNotFound &&
     self.numReplacements = 0;
 
     // Find the position to start searching
-    self.replaceStartLocation = [window.sourceView.textStorage xvim_indexOfLineNumber:from column:0];
+    self.replaceStartLocation = [window.sourceView xvim_indexOfLineNumber:from column:0];
     if (NSNotFound == self.replaceStartLocation) {
         return;
     }
 
     // Find the position to end the searching
     self.replaceEndLocation =
-                [window.sourceView.textStorage xvim_indexOfLineNumber:to + 1
+                [window.sourceView xvim_indexOfLineNumber:to + 1
                                                                column:0]; // Next line of the end of range.
     if (NSNotFound == self.replaceEndLocation) {
         self.replaceEndLocation = [[[window sourceView] string] length];
@@ -563,12 +565,12 @@ if (found.location != NSNotFound &&
 
         // If search string contained a $, move to the next line
         if ([self.lastSearchCmd rangeOfString:@"$"].length > 0) {
-            self.replaceStartLocation = [window.sourceView.textStorage xvim_endOfLine:self.lastFoundRange.location] + 1;
+            self.replaceStartLocation = [window.sourceView xvim_endOfLine:self.lastFoundRange.location] + 1;
         }
     }
     // global option off; only one match per line
     else {
-        self.replaceStartLocation = [window.sourceView.textStorage xvim_endOfLine:self.lastFoundRange.location] + 1;
+        self.replaceStartLocation = [window.sourceView xvim_endOfLine:self.lastFoundRange.location] + 1;
     }
 }
 

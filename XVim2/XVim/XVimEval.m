@@ -13,15 +13,10 @@
 
 //
 @implementation XVimEvalArg
-@synthesize invar = _invar;
-@synthesize rvar = _rvar;
 @end
 
 //
 @implementation XVimEvalFunc
-
-@synthesize funcName = _funcName;
-@synthesize methodName = _methodName;
 
 - (id)initWithFuncName:(NSString*)aFuncName MethodName:(NSString*)aMethodName
 {
@@ -37,12 +32,12 @@
 
 //
 @implementation XVimEval
-#define EVALFUNC(funcname, methodname) [[XVimEvalFunc alloc] initWithFuncName:funcname MethodName:methodname]
 - (id)init
 {
     self = [super init];
     if (self) {
-        _evalFuncs = [[NSArray alloc] initWithObjects:EVALFUNC(@"line", @"line:inWindow:"), nil];
+        _auto func = [[XVimEvalFunc alloc] initWithFuncName:@"line"  MethodName:@"line:inWindow:"];
+        _evalFuncs = @[func];
     }
     return self;
 }
@@ -62,12 +57,12 @@
             // double quatation string : "abc.."
             ++index;
             while (index < instr.length) {
-                unichar uc = [instr characterAtIndex:index];
-                if (uc == '"') {
+                unichar uc2 = [instr characterAtIndex:index];
+                if (uc2 == '"') {
                     ++index;
                     break;
                 }
-                [evaled appendFormat:@"%C", uc];
+                [evaled appendFormat:@"%C", uc2];
                 ++index;
             }
         }
@@ -84,19 +79,19 @@
             // begin function
             NSMutableString* cmd = [NSMutableString stringWithFormat:@""];
             while (index < instr.length) {
-                unichar uc = [instr characterAtIndex:index];
-                if (uc == ')') {
-                    [cmd appendFormat:@"%C", uc];
+                unichar uc2 = [instr characterAtIndex:index];
+                if (uc2 == ')') {
+                    [cmd appendFormat:@"%C", uc2];
                     ++index;
                     break;
                 }
-                [cmd appendFormat:@"%C", uc];
+                [cmd appendFormat:@"%C", uc2];
                 ++index;
             }
             XVimEvalArg* evalarg = [[XVimEvalArg alloc] init];
             evalarg.invar = cmd;
             [self evaluateFunc:evalarg inWindow:window];
-            NSString* ret = (NSString*)evalarg.rvar;
+            NSString* ret = evalarg.rvar;
             if (concat) {
                 if (ret != nil) {
                     [evaled appendString:ret];

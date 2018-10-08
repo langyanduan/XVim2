@@ -25,44 +25,11 @@
     // TODO: XVimQuickFixView* _quickFixScrollView;
     id _quickFixObservation;
     NSTimer* _errorTimer;
+    DVTFontAndColorTheme* _theme;
 }
 @end
 
 @implementation XVimCommandLine
-
-- (void)updateFontAndColors
-{
-#ifdef TODO
-    NSColor* textColor = [NSColor textColor];
-    NSFont* textFont = [NSFont systemFontOfSize:[NSFont systemFontSize]];
-    NSColor* textBackgroundColor = [NSColor textBackgroundColor];
-    DVTFontAndColorTheme* theme = [NSClassFromString(@"DVTFontAndColorTheme") performSelector:@selector(currentTheme)];
-    if (nil != theme) {
-        textColor = [theme sourcePlainTextColor];
-        textFont = [theme sourcePlainTextFont];
-        textBackgroundColor = [theme sourceTextBackgroundColor];
-    }
-    [_static setFont:textFont];
-    [_static setTextColor:textColor];
-    [_static invalidateIntrinsicContentSize];
-
-    [_command setFont:textFont];
-    [_command setTextColor:textColor];
-    [_command setBackgroundColor:textBackgroundColor];
-    [_command invalidateIntrinsicContentSize];
-
-    [_argument setFont:textFont];
-    [_argument setTextColor:textColor];
-    [_argument invalidateIntrinsicContentSize];
-
-    [_error setFont:textFont];
-    [_error setTextColor:textColor];
-    [_error setBackgroundColor:textBackgroundColor];
-    [_error invalidateIntrinsicContentSize];
-
-    [self invalidateIntrinsicContentSize];
-#endif
-}
 
 static const BOOL UseLayers = NO;
 
@@ -70,12 +37,17 @@ static const BOOL UseLayers = NO;
 {
     self = [super init];
     if (self) {
+        _theme = [NSClassFromString(@"DVTFontAndColorTheme") performSelector:@selector(currentTheme)];
         NSEdgeInsets insets = NSEdgeInsetsMake(3.0, 3.0, 3.0, 3.0);
 
         self.translatesAutoresizingMaskIntoConstraints = NO;
         self.wantsLayer = UseLayers;
         self.blendingMode = NSVisualEffectBlendingModeWithinWindow;
-        self.appearance = [NSAppearance appearanceNamed:NSAppearanceNameVibrantDark];
+        if (_theme.hasLightBackground){
+            self.appearance = [NSAppearance appearanceNamed:NSAppearanceNameVibrantLight];
+        } else {
+            self.appearance = [NSAppearance appearanceNamed:NSAppearanceNameVibrantDark];
+        }
 
         // Static Message ( This is behind the command view if the command is active)
         _static = [NSTextField labelWithString:@""];
@@ -157,11 +129,10 @@ static const BOOL UseLayers = NO;
         [self addSubview:_quickFixScrollView];
 #endif
 
-
         // Command View
         _command = [[XVimCommandField alloc] init];
         _command.wantsLayer = UseLayers;
-        _command.drawsBackground = NO;
+        _command.drawsBackground = YES;
         [_command setEditable:NO];
         [_command setSelectable:NO];
         [_command setHidden:YES];
@@ -199,13 +170,8 @@ static const BOOL UseLayers = NO;
         [self.bottomAnchor constraintEqualToAnchor:_argument.bottomAnchor constant:insets.bottom].active
                     = YES;
 
+        
 
-        [[NSNotificationCenter defaultCenter] addObserver:self
-                                                 selector:@selector(fontAndColorSourceTextSettingsChanged:)
-                                                     name:@"DVTFontAndColorSourceTextSettingsChangedNotification"
-                                                   object:nil];
-
-        [self updateFontAndColors];
     }
     return self;
 }
@@ -237,6 +203,14 @@ static const BOOL UseLayers = NO;
         [_argument setStringValue:string];
     }
 }
+
+-(void)setModeHidden:(BOOL)modeHidden {
+    _static.hidden = modeHidden;
+}
+-(BOOL)isModeHidden {
+    return _static.hidden;
+}
+
 /**
  * (BOOL)aRedColorSetting
  *      YES: red color background
@@ -312,10 +286,5 @@ static NSString* QuickFixPrompt = @"\nPress a key to continue...";
 
 - (XVimCommandField*)commandField { return _command; }
 
-- (void)fontAndColorSourceTextSettingsChanged:(NSNotification*)notification
-{
-    [self updateFontAndColors];
-    [self setNeedsDisplay:YES];
-}
 
 @end

@@ -19,7 +19,7 @@ static NSString* FILE_MARKS = @"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     NSCharacterSet* _localMarkSet;
     NSCharacterSet* _fileMarkSet;
     // NSCharacterSet* _numberedMarkSet; // Currently Not Supported
-    NSMutableDictionary* _fileMarks;
+    NSMutableDictionary<NSString*, XVimMark*>* _fileMarks;
     enum {
         kJumpListMax = 100,
     };
@@ -189,7 +189,7 @@ static NSString* FILE_MARKS = @"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     if (nil == [_localMarksDictionary objectForKey:mark.document]) {
         [_localMarksDictionary setObject:[XVimMarks createEmptyLocalMarkDictionary] forKey:mark.document];
     }
-    NSDictionary* marks = [_localMarksDictionary objectForKey:mark.document];
+    NSDictionary<NSString*, XVimMark*>* marks = [_localMarksDictionary objectForKey:mark.document];
     [[marks objectForKey:[NSString stringWithFormat:@"%C", c]] setMark:mark];
     return;
 }
@@ -226,7 +226,7 @@ static NSString* FILE_MARKS = @"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 {
     NSAssert(aMark, @"Mark cannot be nil");
     // DEBUG_LOG( @"line[%d] keepjump[%d]", aMark.line, keepJumpMarkIndex );
-    
+
     NSMutableArray* aryDel = [NSMutableArray array];
     for (XVimMark* jump in _jumplist) {
         if (jump.line == aMark.line && [jump.document isEqualToString:aMark.document]) {

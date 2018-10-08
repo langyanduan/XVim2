@@ -9,6 +9,8 @@
 #import "NSString+VimHelper.h"
 #import "NSTextStorage+VimOperation.h"
 #import "SourceCodeEditorViewProxy+Yank.h"
+#import "SourceCodeEditorViewProxy+XVim.h"
+#import "SourceCodeEditorViewProxy+Operations.h"
 #import "XVimMotion.h"
 
 @interface SourceCodeEditorViewProxy ()
@@ -19,7 +21,7 @@
 @property (strong) NSString* lastYankedText;
 @property TEXT_TYPE lastYankedType;
 - (void)xvim_moveCursor:(NSUInteger)pos preserveColumn:(BOOL)preserve;
-- (void)xvim_syncState;
+- (void)xvim_syncStateWithScroll:(BOOL)scroll;
 - (XVimRange)xvim_getMotionRange:(NSUInteger)current Motion:(XVimMotion*)motion;
 - (XVimSelection)_xvim_selectedBlock;
 - (NSRange)_xvim_selectedRange;
@@ -59,16 +61,16 @@
             return;
         }
         // We have to treat some special cases (same as delete)
-        if (motion.motion == MOTION_FORWARD && motion.info->reachedEndOfLine) {
+        if (motion.motion == MOTION_FORWARD && motion.info.reachedEndOfLine) {
             motion.type = CHARACTERWISE_INCLUSIVE;
         }
         if (motion.motion == MOTION_WORD_FORWARD) {
-            if ((motion.info->isFirstWordInLine && motion.info->lastEndOfLine != NSNotFound)) {
+            if ((motion.info.isFirstWordInLine && motion.info.lastEndOfLine != NSNotFound)) {
                 // Special cases for word move over a line break.
-                to.end = motion.info->lastEndOfLine;
+                to.end = motion.info.lastEndOfLine;
                 motion.type = CHARACTERWISE_INCLUSIVE;
             }
-            else if (motion.info->reachedEndOfLine) {
+            else if (motion.info.reachedEndOfLine) {
                 if (motion.type == CHARACTERWISE_EXCLUSIVE) {
                     motion.type = CHARACTERWISE_INCLUSIVE;
                 }
@@ -89,7 +91,7 @@
     else {
         XVimSelection sel = [self _xvim_selectedBlock];
 
-        newPos = [self.textStorage xvim_indexOfLineNumber:sel.top column:sel.left];
+        newPos = [self xvim_indexOfLineNumber:sel.top column:sel.left];
         [self _xvim_yankSelection:sel];
     }
 
@@ -103,14 +105,15 @@
 
 - (void)xvim_put:(NSString*)text withType:(TEXT_TYPE)type afterCursor:(bool)after count:(NSUInteger)count
 {
-    EDIT_TRANSACTION_SCOPE
+    [self xvim_beginEditTransaction];
+    xvim_on_exit { [self xvim_endEditTransaction]; };
 
     TRACE_LOG(@"text:%@  type:%d   afterCursor:%d   count:%d", text, type, after, count);
     if (self.selectionMode != XVIM_VISUAL_NONE) {
         // FIXME: Make them not to change text from register...
         text = [NSString stringWithString:text]; // copy string because the text may be changed with folloing delete if
                                                  // it is from the same register...
-        [self xvim_delete:XVIM_MAKE_MOTION(MOTION_NONE, CHARACTERWISE_INCLUSIVE, MOTION_OPTION_NONE, 1) andYank:YES];
+        [self xvim_delete:XVIM_MAKE_MOTION(MOTION_NONE, CHARACTERWISE_INCLUSIVE, MOPT_NONE, 1) andYank:YES];
         after = NO;
     }
 
@@ -163,11 +166,11 @@
         for (NSUInteger i = 0; i < lines.count; i++) {
             NSString* line = [lines objectAtIndex:i];
             NSUInteger targetLine = startLine + i;
-            NSUInteger head = [self.textStorage xvim_indexOfLineNumber:targetLine];
+            NSUInteger head = [self xvim_indexOfLineNumber:targetLine];
             if (NSNotFound == head) {
                 NSAssert(targetLine != 0, @"This should not be happen");
                 [self xvim_insertNewlineBelowLine:targetLine - 1];
-                head = [self.textStorage xvim_indexOfLineNumber:targetLine];
+                head = [self xvim_indexOfLineNumber:targetLine];
             }
             NSAssert(NSNotFound != head, @"Head of the target line must be found at this point");
 
@@ -176,11 +179,11 @@
             NSAssert(max != NSNotFound, @"Should not be NSNotFound");
             if (column > max) {
                 // If the line does not have enough column pad it with spaces
-                NSUInteger end = [self.textStorage xvim_endOfLine:head];
+                NSUInteger end = [self xvim_endOfLine:head];
 
                 [self _xvim_insertSpaces:column - max replacementRange:NSMakeRange(end, 0)];
             }
-            for (NSUInteger i = 0; i < count; i++) {
+            for (NSUInteger j = 0; j < count; j++) {
                 [self xvim_insertText:line line:targetLine column:column];
             }
         }
@@ -188,7 +191,7 @@
 
 
     [self xvim_moveCursor:insertionPointAfterPut preserveColumn:NO];
-    [self xvim_syncState];
+    [self xvim_syncStateWithScroll:YES];
     [self xvim_changeSelectionMode:XVIM_VISUAL_NONE];
 }
 
@@ -250,8 +253,8 @@
     self.lastYankedType = TEXT_TYPE_BLOCK;
 
     for (NSUInteger line = sel.top; line <= sel.bottom; line++) {
-        NSUInteger lpos = [ts xvim_indexOfLineNumber:line column:sel.left];
-        NSUInteger rpos = [ts xvim_indexOfLineNumber:line column:sel.right];
+        NSUInteger lpos = [self xvim_indexOfLineNumber:line column:sel.left];
+        NSUInteger rpos = [self xvim_indexOfLineNumber:line column:sel.right];
 
         /* if lpos points in the middle of a tab, split it and advance lpos */
         if (![ts isEOF:lpos] && [s characterAtIndex:lpos] == '\t') {
@@ -323,8 +326,8 @@
 
     for (NSUInteger line = sel.bottom; line >= sel.top; line--) {
         NSTextStorage* ts = self.textStorage;
-        NSUInteger lpos = [ts xvim_indexOfLineNumber:line column:sel.left];
-        NSUInteger rpos = [ts xvim_indexOfLineNumber:line column:sel.right];
+        NSUInteger lpos = [self xvim_indexOfLineNumber:line column:sel.left];
+        NSUInteger rpos = [self xvim_indexOfLineNumber:line column:sel.right];
         NSUInteger nspaces = 0;
 
         if ([ts isEOF:lpos]) {

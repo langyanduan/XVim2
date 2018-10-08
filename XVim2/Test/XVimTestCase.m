@@ -9,6 +9,7 @@
 #import "XVimTestCase.h"
 #import "Logger.h"
 #import "SourceCodeEditorViewProxy.h"
+#import "SourceCodeEditorViewProxy+XVim.h"
 #import "XVimKeyStroke.h"
 #import "XVimWindow.h"
 #import "XcodeUtils.h"
@@ -124,11 +125,11 @@ static atomic_uint dispatchQueueCount = ATOMIC_VAR_INIT(0);
     {
         editorString = [editorString substringToIndex:editorString.length-1];
     }
+    self.actualText = editorString;
     
     if (![self.expectedText isEqualToString:editorString]) {
-        self.message = [NSString stringWithFormat:@"Result text is different from expected text.\n\nResult "
-                                                  @"Text:\n%@\n\nExpected Text:\n%@ [%@:%ld]\n",
-                                                  [XVimLastActiveSourceView() string], self.expectedText, self.file,
+        self.message = [NSString stringWithFormat:@"Result text is different from expected text.\n[%@:%ld]\n",
+                                                  self.file,
                                                   self.line];
         return NO;
     }

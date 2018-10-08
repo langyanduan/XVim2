@@ -9,15 +9,10 @@
 #import "XVimKeymapProvider.h"
 #import <AppKit/AppKit.h>
 
-@class XVimKeymap;
 @class XVimOptions;
-@class XVimRegister;
 @class XVimSearch;
-@class XVimCharacterSearch;
 @class XVimExCommand;
 @class XVimHistoryHandler;
-@class XVimCommandLine;
-@class XVimCommandField;
 @class XVimMarks;
 @class XVimMotion;
 @class XVimRegisterManager;
@@ -33,7 +28,7 @@ extern NSString* const XVimDocumentPathKey;
 + (XVim*)instance;
 + (NSString*)xvimrc;
 @property (getter=isEnabled) BOOL enabled;
-@property (strong) NSMenuItem *enabledMenuItem;
+@property (strong) NSMenuItem* enabledMenuItem;
 @property (strong) XVimOptions* options;
 @property (strong) XVimSearch* searcher;
 @property (strong) XVimMotion* lastCharacterSearchMotion;
@@ -98,6 +93,7 @@ extern NSString* const XVimDocumentPathKey;
  **/
 - (void)writeToConsole:(NSString*)fmt, ...;
 - (void)registerWindow:(XVimWindow*)win;
+- (void)sourceRcFile;
 
 @end
 
