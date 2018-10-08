@@ -6,8 +6,6 @@ Since Apple no longer loads 3rd party plugins (in Xcode 8 and above), we have to
     
 2. Prepare code sign certificate
    
-   If you already have a certificate from Apple's developer program you can use it (so skip to next section now). If you don't have one or don't want to use the existing certificate create new one as follows.
-
    2.1 Open "Keychain Access" (in Applications -> Utilities) and select "login" in the left pane.
    
    2.2 Select Create a Certificate ( in KeyChain Access -> Certificate Assistant )
@@ -34,3 +32,10 @@ Since Apple no longer loads 3rd party plugins (in Xcode 8 and above), we have to
 4. Build XVim
 
    Go to XVim directory you cloned and build it as usual (Read INSTALL section in [README.md](README.md)).
+
+5. Certificate Expiration
+
+   A self-signed root certificate has a short expire date (1 year).
+   Please check expire date of your certificate `XcodeSigner` in Keychain Access App.
+   If it expires, please re-create it.
+

@@ -25,7 +25,7 @@
 @property TEXT_TYPE lastYankedType;
 - (XVimRange)_xvim_selectedLines;
 - (void)xvim_moveCursor:(NSUInteger)pos preserveColumn:(BOOL)preserve;
-- (void)xvim_syncState;
+- (void)xvim_syncStateWithScroll:(BOOL)scroll;
 - (XVimRange)xvim_getMotionRange:(NSUInteger)current Motion:(XVimMotion*)motion;
 - (NSRange)_xvim_getYankRange:(XVimMotion*)motion withRange:(XVimRange)to;
 - (XVimSelection)_xvim_selectedBlock;
@@ -93,7 +93,7 @@
         [self xvim_moveCursor: cursorPos preserveColumn:NO];
     }
     
-    [self xvim_syncState];
+    [self xvim_syncStateWithScroll:YES];
     [self xvim_changeSelectionMode:XVIM_VISUAL_NONE];
 }
 
@@ -116,7 +116,7 @@
     [self xvim_beginEditTransaction];
     xvim_on_exit { [self xvim_endEditTransaction]; };
 
-    motion.info->deleteLastLine = NO;
+    motion.info.deleteLastLine = NO;
     if (self.selectionMode == XVIM_VISUAL_NONE) {
         XVimRange motionRange = [self xvim_getMotionRange:motionPoint Motion:motion];
         if (motionRange.end == NSNotFound) {
@@ -125,7 +125,7 @@
         // We have to treat some special cases
         // When a cursor get end of line with "l" motion, make the motion type to inclusive.
         // This make you to delete the last character. (if its exclusive last character never deleted with "dl")
-        if (motion.motion == MOTION_FORWARD && motion.info->reachedEndOfLine) {
+        if (motion.motion == MOTION_FORWARD && motion.info.reachedEndOfLine) {
             if (motion.type == CHARACTERWISE_EXCLUSIVE) {
                 motion.type = CHARACTERWISE_INCLUSIVE;
             }
@@ -134,12 +134,12 @@
             }
         }
         if (motion.motion == MOTION_WORD_FORWARD) {
-            if ((motion.info->isFirstWordInLine && motion.info->lastEndOfLine != NSNotFound)) {
+            if ((motion.info.isFirstWordInLine && motion.info.lastEndOfLine != NSNotFound)) {
                 // Special cases for word move over a line break.
-                motionRange.end = motion.info->lastEndOfLine;
+                motionRange.end = motion.info.lastEndOfLine;
                 motion.type = CHARACTERWISE_INCLUSIVE;
             }
-            else if (motion.info->reachedEndOfLine) {
+            else if (motion.info.reachedEndOfLine) {
                 if (motion.type == CHARACTERWISE_EXCLUSIVE) {
                     motion.type = CHARACTERWISE_INCLUSIVE;
                 }
@@ -195,7 +195,7 @@
     [self xvim_changeSelectionMode:XVIM_VISUAL_NONE];
     if (newPos != NSNotFound) {
         [self xvim_moveCursor:newPos preserveColumn:NO];
-        [self xvim_syncState];
+        [self xvim_syncStateWithScroll:NO];
     }
     return YES;
 }
@@ -223,7 +223,7 @@
     pos = [self xvim_endOfLine:pos];
     [self insertText:@"\n" replacementRange:NSMakeRange(pos, 0)];
     [self xvim_moveCursor:pos + 1 preserveColumn:NO];
-    [self xvim_syncState];
+    [self xvim_syncStateWithScroll:YES];
 }
 
 - (void)xvim_insertNewlineBelowCurrentLine
@@ -324,7 +324,7 @@
     if (motion.motion == MOTION_WORD_FORWARD && [self.textStorage isNonblank:self.insertionPoint]) {
         motion.motion = MOTION_END_OF_WORD_FORWARD;
         motion.type = CHARACTERWISE_INCLUSIVE;
-        motion.option |= MOTION_OPTION_CHANGE_WORD;
+        motion.option |= MOPT_CHANGE_WORD;
     }
     // We have to set cursor mode insert before calling delete
     // because delete adjust cursor position when the cursor is end of line. (e.g. C command).
@@ -336,7 +336,7 @@
         self.cursorMode = CURSOR_MODE_COMMAND;
         return NO;
     }
-    if (motion.info->deleteLastLine) {
+    if (motion.info.deleteLastLine) {
         [self xvim_insertNewlineAboveLine:[self.textStorage xvim_lineNumberAtIndex:self.insertionPoint]];
     }
     else if (insertNewline) {
@@ -345,7 +345,7 @@
     else {
     }
     [self xvim_changeSelectionMode:XVIM_VISUAL_NONE];
-    [self xvim_syncState];
+    [self xvim_syncStateWithScroll:NO];
     return YES;
 }
 
@@ -387,12 +387,12 @@
 
     if (self.selectionMode == XVIM_VISUAL_NONE) {
         if (motion.motion == MOTION_NONE) {
-            XVimMotion* m = XVIM_MAKE_MOTION(MOTION_FORWARD, CHARACTERWISE_EXCLUSIVE, LEFT_RIGHT_NOWRAP, motion.count);
+            XVimMotion* m = XVIM_MAKE_MOTION(MOTION_FORWARD, CHARACTERWISE_EXCLUSIVE, MOPT_LEFT_RIGHT_NOWRAP, motion.count);
             XVimRange r = [self xvim_getMotionRange:self.insertionPoint Motion:m];
             if (r.end == NSNotFound) {
                 return;
             }
-            if (m.info->reachedEndOfLine) {
+            if (m.info.reachedEndOfLine) {
                 [self xvim_swapCaseForRange:[self xvim_getOperationRangeFrom:r.begin
                                                                                 To:r.end
                                                                               Type:CHARACTERWISE_INCLUSIVE]];
@@ -423,7 +423,7 @@
         [self xvim_moveCursor:[[ranges objectAtIndex:0] rangeValue].location preserveColumn:NO];
     }
 
-    [self xvim_syncState];
+    [self xvim_syncStateWithScroll:YES];
     [self xvim_changeSelectionMode:XVIM_VISUAL_NONE];
 }
 
@@ -452,7 +452,7 @@
         [self xvim_moveCursor:[[ranges objectAtIndex:0] rangeValue].location preserveColumn:NO];
     }
 
-    [self xvim_syncState];
+    [self xvim_syncStateWithScroll:YES];
     [self xvim_changeSelectionMode:XVIM_VISUAL_NONE];
 }
 
@@ -484,7 +484,7 @@
         [self xvim_moveCursor:[[ranges objectAtIndex:0] rangeValue].location preserveColumn:NO];
     }
 
-    [self xvim_syncState];
+    [self xvim_syncStateWithScroll:YES];
     [self xvim_changeSelectionMode:XVIM_VISUAL_NONE];
 }
 
@@ -515,7 +515,7 @@
     }
 
     // Search in next line for the position to join(skip white spaces in next line)
-    NSUInteger posToJoin = [self.textStorage nextLine:headOfLine column:0 count:1 option:MOTION_OPTION_NONE];
+    NSUInteger posToJoin = [self.textStorage nextLine:headOfLine column:0 count:1 option:MOPT_NONE];
 
     posToJoin = [self.textStorage xvim_nextNonblankInLineAtIndex:posToJoin allowEOL:YES];
     if (![self.textStorage isEOF:posToJoin] && [self.string characterAtIndex:posToJoin] == ')') {
@@ -650,7 +650,7 @@
     }
 
     [self xvim_moveCursor:pos preserveColumn:NO];
-    [self xvim_syncState];
+    [self xvim_syncStateWithScroll:YES];
     [self xvim_changeSelectionMode:XVIM_VISUAL_NONE];
 }
 
@@ -752,7 +752,7 @@
 
     [self insertText:repl replacementRange:range];
     [self xvim_moveCursor:range.location + repl.length - 1 preserveColumn:NO];
-    [self xvim_syncState];
+    [self xvim_syncStateWithScroll:YES];
     return YES;
 }
 
@@ -819,7 +819,7 @@
     }
 
     self.insertionPoint = insertionAfterOperation;
-    [self xvim_syncState];
+    [self xvim_syncStateWithScroll:YES];
 }
 
 
@@ -869,7 +869,7 @@
     NSRange r = [self xvim_getOperationRangeFrom:to.begin To:to.end Type:motion.type];
     if (motion.type == LINEWISE && [self.textStorage isLastLine:to.end]) {
         if (r.location != 0) {
-            motion.info->deleteLastLine = YES;
+            motion.info.deleteLastLine = YES;
             r.location--;
             r.length++;
         }

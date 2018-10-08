@@ -13,9 +13,13 @@
 #import "XVim2-Swift.h"
 #import "XVimCommandLine.h"
 #import "XVimMotion.h"
+#import "XVimOptions.h"
+#import "XVimWindow.h"
 #import "rd_route.h"
 #import <IDEKit/IDEEditorArea.h>
 #import "XcodeUtils.h"
+#import "SourceEditorScrollView.h"
+#import "SourceCodeEditorViewProxy+XVim.h"
 
 #import "_TtC15IDESourceEditor18SourceCodeDocument.h"
 #import "_TtC15IDESourceEditor19IDESourceEditorView.h"
@@ -49,8 +53,16 @@
     XVimCommandLine* _commandLine;
     BOOL _enabled;
 }
-//@synthesize enabled = _enabled;
 
+- (void)haltScroll
+{
+    self.sourceCodeEditorView.xvim_window.scrollHalt = YES;
+}
+
+- (void)restoreScroll
+{
+    self.sourceCodeEditorView.xvim_window.scrollHalt = NO;
+}
 
 - (instancetype)initWithSourceCodeEditorView:(_TtC15IDESourceEditor19IDESourceEditorView*)sourceCodeEditorView
 {
@@ -110,7 +122,6 @@
 {
     return [self.sourceCodeEditorView characterRangeForLineRange:arg1];
 }
-- (NSInteger)linesPerPage { return self.sourceCodeEditorViewWrapper.linesPerPage; }
 - (NSInteger)lineCount { return  self.sourceEditorDataSourceWrapper.lineCount; }
 - (void)scrollRangeToVisible:(NSRange)arg1 { [self.sourceCodeEditorView scrollRangeToVisible:arg1]; }
 
@@ -176,7 +187,7 @@
     return [self.sourceEditorDataSourceWrapper internalCharOffsetFromPosition:pos];
 }
 
-- (SourceEditorUndoManager*)undoManager { return self.sourceEditorDataSourceWrapper.undoManager; }
+- (_TtC12SourceEditor23SourceEditorUndoManager*)undoManager { return self.sourceEditorDataSourceWrapper.undoManager; }
 
 - (void)beginEditTransaction { [self.sourceEditorDataSourceWrapper beginEditTransaction]; }
 
@@ -217,10 +228,16 @@
 
 - (void)insertText:(id)string replacementRange:(NSRange)replacementRange
 {
+    [self haltScroll];
     [self.sourceCodeEditorView insertText:string replacementRange:replacementRange];
+    [self restoreScroll];
 }
 
-- (void)insertText:(NSString*)text { [self.sourceCodeEditorView insertText:text]; }
+- (void)insertText:(NSString*)text {
+    [self haltScroll];
+    [self.sourceCodeEditorView insertText:text];
+    [self restoreScroll];
+}
 
 - (NSTextStorage*)textStorage
 {
@@ -274,33 +291,25 @@
 }
 
 - (BOOL)hasMarkedText {
-    // XCODE93
-    return NO;
-    //return self.sourceCodeEditorView.hasMarkedText;
+    return self.sourceCodeEditorView.hasMarkedText;
 }
 
 - (NSRange)markedRange {
-    // XCODE93
-    //return self.sourceCodeEditorView.markedRange;
-    return NSMakeRange(0, 0);
+    return self.sourceCodeEditorView.markedRange;
 }
 
 - (void)setMarkedText:(nonnull id)string selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange
 {
-    // XCODE93
-    //[self.sourceCodeEditorView setMarkedText:string selectedRange:selectedRange replacementRange:replacementRange];
+    [self.sourceCodeEditorView setMarkedText:string selectedRange:selectedRange replacementRange:replacementRange];
 }
 
 - (void)unmarkText {
-    // XCODE93
-    // [self.sourceCodeEditorView unmarkText];
+    [self.sourceCodeEditorView unmarkText];
 }
 
 - (nonnull NSArray<NSAttributedStringKey>*)validAttributesForMarkedText
 {
-    // XCODE93
-    //return self.sourceCodeEditorView.validAttributesForMarkedText;
-    return @[];
+    return self.sourceCodeEditorView.validAttributesForMarkedText;
 }
 
 #pragma mark-- selection
@@ -362,7 +371,6 @@
 
 - (void)selectionChanged:(NSNotification*)changeNotification
 {
-    DEBUG_LOG(@"");
     if (!self.xvim_lockSyncStateFromView) {
         /*
         DEBUG_LOG(@"SELECTION CHANGED from %@! Locked = %@", changeNotification.object,
@@ -439,12 +447,10 @@
 // Proxy methods
 
 - (void)selectPreviousPlaceholder:(id)arg1 {
-    // XCODE93
-    //[self.sourceCodeEditorView selectPreviousPlaceholder:self];
+    [self.sourceCodeEditorView selectPreviousPlaceholder:self];
 }
 - (void)selectNextPlaceholder:(id)arg1 {
-    // XCODE93
-    //[self.sourceCodeEditorView selectNextPlaceholder:self];
+    [self.sourceCodeEditorView selectNextPlaceholder:self];
 }
 - (void)mouseExited:(id)sender { [self.sourceCodeEditorView mouseExited:self]; }
 - (void)mouseEntered:(id)sender { [self.sourceCodeEditorView mouseEntered:self]; }
@@ -479,10 +485,18 @@
 - (void)moveToBeginningOfParagraphAndModifySelection:(id)sender { [self.sourceCodeEditorView moveToBeginningOfParagraphAndModifySelection:self]; }
 - (void)moveToEndOfParagraph:(id)sender { [self.sourceCodeEditorView moveToEndOfParagraph:self]; }
 - (void)moveToBeginningOfParagraph:(id)sender { [self.sourceCodeEditorView moveToBeginningOfParagraph:self]; }
-- (void)moveToEndOfTextAndModifySelection:(id)sender { [self.sourceCodeEditorView moveToEndOfTextAndModifySelection:self]; }
-- (void)moveToEndOfText:(id)sender { [self.sourceCodeEditorView moveToEndOfText:self]; }
-- (void)moveToBeginningOfTextAndModifySelection:(id)sender { [self.sourceCodeEditorView moveToBeginningOfTextAndModifySelection:self]; }
-- (void)moveToBeginningOfText:(id)sender { [self.sourceCodeEditorView moveToBeginningOfText:self]; }
+- (void)moveToEndOfTextAndModifySelection:(id)sender {
+    [self.sourceCodeEditorView moveToEndOfTextAndModifySelection:self];
+}
+- (void)moveToEndOfText:(id)sender {
+    [self.sourceCodeEditorView moveToEndOfText:self];
+}
+- (void)moveToBeginningOfTextAndModifySelection:(id)sender {
+    [self.sourceCodeEditorView moveToBeginningOfTextAndModifySelection:self];
+}
+- (void)moveToBeginningOfText:(id)sender {
+    [self.sourceCodeEditorView moveToBeginningOfText:self];
+}
 - (void)moveToRightEndOfLineAndModifySelection:(id)sender { [self.sourceCodeEditorView moveToRightEndOfLineAndModifySelection:self]; }
 - (void)moveToLeftEndOfLineAndModifySelection:(id)sender { [self.sourceCodeEditorView moveToLeftEndOfLineAndModifySelection:self]; }
 - (void)moveToRightEndOfLine:(id)sender { [self.sourceCodeEditorView moveToRightEndOfLine:self]; }
@@ -491,14 +505,30 @@
 - (void)moveToBeginningOfLineAndModifySelection:(id)sender { [self.sourceCodeEditorView moveToBeginningOfLineAndModifySelection:self]; }
 - (void)moveToEndOfLine:(id)sender { [self.sourceCodeEditorView moveToEndOfLine:self]; }
 - (void)moveToBeginningOfLine:(id)sender { [self.sourceCodeEditorView moveToBeginningOfLine:self]; }
-- (void)moveExpressionBackwardAndModifySelection:(id)sender { [self.sourceCodeEditorView moveExpressionBackwardAndModifySelection:self]; }
-- (void)moveExpressionForwardAndModifySelection:(id)sender { [self.sourceCodeEditorView moveExpressionForwardAndModifySelection:self]; }
-- (void)moveExpressionBackward:(id)sender { [self.sourceCodeEditorView moveExpressionBackward:self]; }
-- (void)moveExpressionForward:(id)sender { [self.sourceCodeEditorView moveExpressionForward:self]; }
-- (void)moveSubWordBackwardAndModifySelection:(id)sender { [self.sourceCodeEditorView moveSubWordBackwardAndModifySelection:self]; }
-- (void)moveSubWordForwardAndModifySelection:(id)sender { [self.sourceCodeEditorView moveSubWordForwardAndModifySelection:self]; }
-- (void)moveSubWordBackward:(id)sender { [self.sourceCodeEditorView moveSubWordBackward:self]; }
-- (void)moveSubWordForward:(id)sender { [self.sourceCodeEditorView moveSubWordForward:self]; }
+- (void)moveExpressionBackwardAndModifySelection:(id)sender {
+    [self.sourceCodeEditorView moveExpressionBackwardAndModifySelection:self];
+}
+- (void)moveExpressionForwardAndModifySelection:(id)sender {
+    [self.sourceCodeEditorView moveExpressionForwardAndModifySelection:self];
+}
+- (void)moveExpressionBackward:(id)sender {
+    [self.sourceCodeEditorView moveExpressionBackward:self];
+}
+- (void)moveExpressionForward:(id)sender {
+    [self.sourceCodeEditorView moveExpressionForward:self];
+}
+- (void)moveSubWordBackwardAndModifySelection:(id)sender {
+    [self.sourceCodeEditorView moveSubWordBackwardAndModifySelection:self];
+}
+- (void)moveSubWordForwardAndModifySelection:(id)sender {
+    [self.sourceCodeEditorView moveSubWordForwardAndModifySelection:self];
+}
+- (void)moveSubWordBackward:(id)sender {
+    [self.sourceCodeEditorView moveSubWordBackward:self];
+}
+- (void)moveSubWordForward:(id)sender {
+    [self.sourceCodeEditorView moveSubWordForward:self];
+}
 - (void)moveWordLeftAndModifySelection:(id)sender { [self.sourceCodeEditorView moveWordLeftAndModifySelection:self]; }
 - (void)moveWordRightAndModifySelection:(id)sender { [self.sourceCodeEditorView moveWordRightAndModifySelection:self]; }
 - (void)moveWordLeft:(id)sender { [self.sourceCodeEditorView moveWordLeft:self]; }
@@ -526,13 +556,25 @@
 - (void)unfoldAll:(id)sender { [self.sourceCodeEditorView unfoldAll:self]; }
 - (void)unfold:(id)sender { [self.sourceCodeEditorView unfold:self]; }
 - (void)fold:(id)sender { [self.sourceCodeEditorView fold:self]; }
-- (void)balance:(id)sender { [self.sourceCodeEditorView balance:self]; }
+- (void)balance:(id)sender {
+    [self.sourceCodeEditorView balance:self];
+}
 - (void)selectStructure:(id)sender { [self.sourceCodeEditorView selectStructure:self]; }
-- (void)shiftRight:(id)sender { [self.sourceCodeEditorView shiftRight:self]; }
-- (void)shiftLeft:(id)sender { [self.sourceCodeEditorView shiftLeft:self]; }
-- (void)indentSelection:(id)sender { [self.sourceCodeEditorView indentSelection:self]; }
-- (void)moveCurrentLineDown:(id)sender { [self.sourceCodeEditorView moveCurrentLineDown:self]; }
-- (void)moveCurrentLineUp:(id)sender { [self.sourceCodeEditorView moveCurrentLineUp:self]; }
+- (void)shiftRight:(id)sender {
+    [self.sourceCodeEditorView shiftRight:self];
+}
+- (void)shiftLeft:(id)sender {
+    [self.sourceCodeEditorView shiftLeft:self];
+}
+- (void)indentSelection:(id)sender {
+    [self.sourceCodeEditorView indentSelection:self];
+}
+- (void)moveCurrentLineDown:(id)sender {
+    [self.sourceCodeEditorView moveCurrentLineDown:self];
+}
+- (void)moveCurrentLineUp:(id)sender {
+    [self.sourceCodeEditorView moveCurrentLineUp:self];
+}
 - (void)complete:(id)sender { [self.sourceCodeEditorView complete:self]; }
 - (void)swapWithMark:(id)sender { [self.sourceCodeEditorView swapWithMark:self]; }
 - (void)selectToMark:(id)sender { [self.sourceCodeEditorView selectToMark:self]; }
@@ -544,22 +586,36 @@
 - (void)lowercaseWord:(id)sender { [self.sourceCodeEditorView lowercaseWord:self]; }
 - (void)uppercaseWord:(id)sender { [self.sourceCodeEditorView uppercaseWord:self]; }
 - (void)transpose:(id)sender { [self.sourceCodeEditorView transpose:self]; }
-- (void)deleteToEndOfText:(id)sender { [self.sourceCodeEditorView deleteToEndOfText:self]; }
-- (void)deleteToBeginningOfText:(id)sender { [self.sourceCodeEditorView deleteToBeginningOfText:self]; }
+- (void)deleteToEndOfText:(id)sender {
+    [self.sourceCodeEditorView deleteToEndOfText:self];
+}
+- (void)deleteToBeginningOfText:(id)sender {
+    [self.sourceCodeEditorView deleteToBeginningOfText:self];
+}
 - (void)deleteToEndOfParagraph:(id)sender { [self.sourceCodeEditorView deleteToEndOfParagraph:self]; }
 - (void)deleteToBeginningOfParagraph:(id)sender { [self.sourceCodeEditorView deleteToBeginningOfParagraph:self]; }
 - (void)deleteToEndOfLine:(id)sender { [self.sourceCodeEditorView deleteToEndOfLine:self]; }
 - (void)deleteToBeginningOfLine:(id)sender { [self.sourceCodeEditorView deleteToBeginningOfLine:self]; }
-- (void)deleteExpressionBackward:(id)sender { [self.sourceCodeEditorView deleteExpressionBackward:self]; }
-- (void)deleteExpressionForward:(id)sender { [self.sourceCodeEditorView deleteExpressionForward:self]; }
-- (void)deleteSubWordBackward:(id)sender { [self.sourceCodeEditorView deleteSubWordBackward:self]; }
-- (void)deleteSubWordForward:(id)sender { [self.sourceCodeEditorView deleteSubWordForward:self]; }
+- (void)deleteExpressionBackward:(id)sender {
+    [self.sourceCodeEditorView deleteExpressionBackward:self];
+}
+- (void)deleteExpressionForward:(id)sender {
+    [self.sourceCodeEditorView deleteExpressionForward:self];
+}
+- (void)deleteSubWordBackward:(id)sender {
+    [self.sourceCodeEditorView deleteSubWordBackward:self];
+}
+- (void)deleteSubWordForward:(id)sender {
+    [self.sourceCodeEditorView deleteSubWordForward:self];
+}
 - (void)deleteWordBackward:(id)sender { [self.sourceCodeEditorView deleteWordBackward:self]; }
 - (void)deleteWordForward:(id)sender { [self.sourceCodeEditorView deleteWordForward:self]; }
 - (void)deleteBackwardByDecomposingPreviousCharacter:(id)sender { [self.sourceCodeEditorView deleteBackwardByDecomposingPreviousCharacter:self]; }
 - (void)deleteBackward:(id)sender { [self.sourceCodeEditorView deleteBackward:self]; }
 - (void)deleteForward:(id)sender { [self.sourceCodeEditorView deleteForward:self]; }
-- (void) delete:(id)sender { [self.sourceCodeEditorView delete:self]; }
+- (void) delete:(id)sender {
+    [self.sourceCodeEditorView delete:self];
+}
 - (void)insertDoubleQuoteIgnoringSubstitution:(id)sender { [self.sourceCodeEditorView insertDoubleQuoteIgnoringSubstitution:self]; }
 - (void)insertSingleQuoteIgnoringSubstitution:(id)sender { [self.sourceCodeEditorView insertSingleQuoteIgnoringSubstitution:self]; }
 - (void)insertContainerBreak:(id)sender { [self.sourceCodeEditorView insertContainerBreak:self]; }
@@ -579,8 +635,7 @@
 - (void)cut:(id)sender { [self.sourceCodeEditorView cut:self]; }
 - (void)copy:(id)sender { [self.sourceCodeEditorView copy:self]; }
 - (void)showFindIndicatorForRange:(NSRange)arg1 {
-    // XCODE93
-    //[self.sourceCodeEditorView showFindIndicatorForRange:arg1];
+    [self.sourceCodeEditorView showFindIndicatorForRange:arg1];
 }
 - (NSUInteger)characterIndexForInsertionAtPoint:(CGPoint)arg1 { return [self.sourceCodeEditorView characterIndexForInsertionAtPoint:arg1]; }
 - (NSRect)bounds { return self.sourceCodeEditorView.bounds; }
@@ -601,13 +656,11 @@ static CGFloat XvimCommandLineAnimationDuration = 0.1;
 
 - (void)showCommandLine
 {
-    // XCODE93
-    /*
     if (self.isShowingCommandLine)
         return;
     
     _auto scrollView = [self.sourceCodeEditorView scrollView];
-    if ([scrollView isKindOfClass:NSClassFromString(@"SourceEditorScrollView")]) {
+    if ([self.sourceCodeEditorView.class isEqual:NSClassFromString(IDEPegasusSourceCodeEditorViewClassName)]) {
         NSView* layoutView = [scrollView superview];
         [layoutView addSubview:self.commandLine];
         _cmdLineBottomAnchor = [layoutView.bottomAnchor constraintEqualToAnchor:self.commandLine.bottomAnchor
@@ -616,7 +669,13 @@ static CGFloat XvimCommandLineAnimationDuration = 0.1;
         [layoutView.widthAnchor constraintEqualToAnchor:self.commandLine.widthAnchor multiplier:1.0].active = YES;
         [layoutView.leftAnchor constraintEqualToAnchor:self.commandLine.leftAnchor].active = YES;
         [layoutView.rightAnchor constraintEqualToAnchor:self.commandLine.rightAnchor].active = YES;
-        _auto height = [self.commandLine.heightAnchor constraintEqualToConstant:0];
+        CGFloat commandline_height;
+        if (XVim.instance.options.laststatus == 0){
+            commandline_height = 0;
+        } else {
+            commandline_height = 20;
+        }
+        _auto height = [self.commandLine.heightAnchor constraintEqualToConstant:commandline_height];
         height.priority = 250;
         height.active = YES;
 
@@ -632,18 +691,15 @@ static CGFloat XvimCommandLineAnimationDuration = 0.1;
                         self.commandLine.needsDisplay = YES;
                     }];
     }
-    */
 }
 
 - (void)hideCommandLine
 {
-    // XCODE93
-    /*
     if (!self.isShowingCommandLine)
         return;
 
     _auto scrollView = [self.sourceCodeEditorView scrollView];
-    if ([scrollView isKindOfClass:NSClassFromString(@"SourceEditorScrollView")]) {
+    if ([self.sourceCodeEditorView.class isEqual:NSClassFromString(IDEPegasusSourceCodeEditorViewClassName)]) {
         NSEdgeInsets insets = scrollView.additionalContentInsets;
         insets.bottom = 0;
 
@@ -658,7 +714,6 @@ static CGFloat XvimCommandLineAnimationDuration = 0.1;
                         self->_cmdLineBottomAnchor = nil;
                     }];
     }
-     */
 }
 
 - (NSMutableArray*)foundRanges

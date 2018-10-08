@@ -495,65 +495,78 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
             break;
         }
 
-        if ((opt & LEFT_RIGHT_NOWRAP) && [self isNewline:pos - 1]) {
+        if ((opt & MOPT_LEFT_RIGHT_NOWRAP) && [self isNewline:pos - 1]) {
             break;
         }
 
+        int len;
         if ([self isNewline:pos - 1]) {
             // skip the newline letter at the end of line
-            --pos;
-            ++index_count;
+            len = 1;
+            pos -= len;
         }
         else {
             NSRange rph = [self rangePlaceHolder:pos option:opt];
             if (rph.location != NSNotFound) {
                 pos = rph.location;
             }
+            
+            if (pos > 0 && [self isLowSurrogate:pos-1]){
+                len = 2;
+            } else {
+                len = 1;
+            }
 
-            --pos;
-            ++index_count;
+            pos -= len;
 
             rph = [self rangePlaceHolder:pos option:opt];
             if (rph.location != NSNotFound) {
                 pos = rph.location;
             }
         }
+        index_count += len;
     }
     return pos;
 }
 
 - (NSUInteger)next:(NSUInteger)index count:(NSUInteger)count option:(MOTION_OPTION)opt info:(XVimMotionInfo*)info
 {
-    info->reachedEndOfLine = NO;
+    info.reachedEndOfLine = NO;
 
     if (index == [[self xvim_string] length])
         return [[self xvim_string] length];
 
     NSUInteger pos = index;
     // If the currenct cursor position is on a newline (blank line) and not wrappable never move the cursor
-    if ((opt & LEFT_RIGHT_NOWRAP) && [self isBlankline:pos]) {
+    if ((opt & MOPT_LEFT_RIGHT_NOWRAP) && [self isBlankline:pos]) {
         return pos;
     }
 
     NSUInteger index_count = 0;
     for (; pos < [[self xvim_string] length];) {
-        if ([self isEOF:pos + 1] || ((opt & LEFT_RIGHT_NOWRAP) && [self isNewline:pos + 1])) {
-            info->reachedEndOfLine = YES;
+        if ([self isEOF:pos + 1] || ((opt & MOPT_LEFT_RIGHT_NOWRAP) && [self isNewline:pos + 1])) {
+            info.reachedEndOfLine = YES;
             break;
         }
 
-        ++index_count;
+        int len;
         NSRange rph = [self rangePlaceHolder:pos option:opt];
         if (rph.location != NSNotFound) {
             pos = NSMaxRange(rph);
+            len = 1;
+        } else {
+            if ([self isHighSurrogate:pos]){
+                len = 2;
+            } else {
+                len = 1;
+            }
+            pos += len;
         }
-        else {
-            ++pos;
-        }
+        index_count += len;
 
-        if ([self isEOF:pos] || ((opt & LEFT_RIGHT_NOWRAP) && [self isNewline:pos])) {
-            --pos;
-            info->reachedEndOfLine = YES;
+        if ([self isEOF:pos] || ((opt & MOPT_LEFT_RIGHT_NOWRAP) && [self isNewline:pos])) {
+            pos -= len;
+            info.reachedEndOfLine = YES;
             break;
         }
         if (index_count >= count) {
@@ -681,7 +694,7 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
     NSAssert(nil != info, @"Specify info");
 
     NSUInteger pos = index;
-    info->lastEndOfLine = NSNotFound;
+    info.lastEndOfLine = NSNotFound;
 
     if ([self isEOF:index]) {
         return index;
@@ -696,10 +709,10 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
         NSRange rph = [self rangePlaceHolder:pos option:opt];
         if ([self isEOF:pos]) {
             if ([self isNonblank:pos - 1]) {
-                info->lastEndOfLine = pos - 1;
-                info->lastEndOfWord = pos - 1;
+                info.lastEndOfLine = pos - 1;
+                info.lastEndOfWord = pos - 1;
             }
-            info->reachedEndOfLine = YES;
+            info.reachedEndOfLine = YES;
             pos--;
             break;
         }
@@ -712,27 +725,27 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
                 lastTwoNewLine = curTwoNewLine;
                 curTwoNewLine = pos - 1;
                 if (lastTwoNewLine != NSNotFound) {
-                    info->lastEndOfLine = lastTwoNewLine;
+                    info.lastEndOfLine = lastTwoNewLine;
                 }
                 // [A]
-                info->isFirstWordInLine = YES;
+                info.isFirstWordInLine = YES;
                 wordInLineFound = YES;
             }
             else {
                 // last word or blank
                 // preserve the point
                 if (count == 1) {
-                    if (info->lastEndOfLine == NSNotFound) {
-                        info->lastEndOfLine = pos - 1;
+                    if (info.lastEndOfLine == NSNotFound) {
+                        info.lastEndOfLine = pos - 1;
                     }
                 }
                 else {
-                    info->lastEndOfLine = pos - 1;
+                    info.lastEndOfLine = pos - 1;
                 }
                 // [D,G]
                 wordInLineFound = NO;
                 if (![self isNonblank:pos - 1]) {
-                    info->isFirstWordInLine = YES;
+                    info.isFirstWordInLine = YES;
                 }
             }
         }
@@ -748,7 +761,7 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
                 }
             }
             // enough to treat as [E]
-            info->isFirstWordInLine = NO;
+            info.isFirstWordInLine = NO;
             wordInLineFound = YES;
         }
         else if ([self isNonblank:pos]
@@ -756,7 +769,7 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
             // - from placeholder to non-placeholder (ex. from '#>' to '[')
             // enough to treat as [E]
             ++word_count;
-            info->isFirstWordInLine = NO;
+            info.isFirstWordInLine = NO;
             wordInLineFound = YES;
         }
         else if ([self isNonblank:pos]) {
@@ -765,7 +778,7 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
                 // - from newline to word
                 // [B]
                 ++word_count;
-                info->isFirstWordInLine = YES;
+                info.isFirstWordInLine = YES;
                 wordInLineFound = YES;
             }
             else if ([self isWhitespaceOrNewline:pos - 1]) {
@@ -773,23 +786,23 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
                 // [H]
                 ++word_count;
                 if (!wordInLineFound) {
-                    info->isFirstWordInLine = YES;
+                    info.isFirstWordInLine = YES;
                     wordInLineFound = YES;
                 }
                 else {
-                    info->isFirstWordInLine = NO;
+                    info.isFirstWordInLine = NO;
                 }
             }
-            else if (!(opt & BIGWORD) && [self isKeyword:pos - 1] != [self isKeyword:pos]) {
+            else if (!(opt & MOPT_BIGWORD) && [self isKeyword:pos - 1] != [self isKeyword:pos]) {
                 // - another keyword (ex. from '>' to 'a' or from 'a' to '<')
                 // [E]
                 ++word_count;
-                info->isFirstWordInLine = NO;
+                info.isFirstWordInLine = NO;
                 wordInLineFound = YES;
             }
         }
 
-        if ([self isNewline:pos] && (opt & LEFT_RIGHT_NOWRAP)) {
+        if ([self isNewline:pos] && (opt & MOPT_LEFT_RIGHT_NOWRAP)) {
             pos--;
             break;
         }
@@ -821,7 +834,7 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
         //    - newline and newline(blankline)
         if (([self isNewline:pos - 1] && [self isBlankline:pos])
             || (([self isWhitespaceOrNewline:pos - 1] && [self isNonblank:pos]))
-            || (!(opt & BIGWORD) && [self isKeyword:pos - 1] != [self isKeyword:pos]
+            || (!(opt & MOPT_BIGWORD) && [self isKeyword:pos - 1] != [self isKeyword:pos]
                 && ![self isWhitespaceOrNewline:pos])) {
             word_count++;
         }
@@ -836,7 +849,7 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
         if (pos == 0) {
             break;
         }
-        if ([self isNewline:pos - 1] && (opt & LEFT_RIGHT_NOWRAP)) {
+        if ([self isNewline:pos - 1] && (opt & MOPT_LEFT_RIGHT_NOWRAP)) {
             break;
         }
         if (rph.location != NSNotFound && rph.location < pos) {
@@ -873,7 +886,7 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
         NSRange rph = [self rangePlaceHolder:pos option:opt];
         if (rph.location != NSNotFound) {
             // placeholder
-            if ((opt & MOTION_OPTION_CHANGE_WORD) || pos != index) {
+            if ((opt & MOPT_CHANGE_WORD) || pos != index) {
                 word_count++;
             }
             pos = NSMaxRange(rph) - 1;
@@ -883,22 +896,22 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
         }
         else if ([self isNewline:pos] && [self isNewline:pos + 1]) {
             // two NewLine
-            if (opt & MOTION_OPTION_CHANGE_WORD) {
+            if (opt & MOPT_CHANGE_WORD) {
                 word_count++;
             }
         }
-        else if ((opt & MOTION_OPTION_CHANGE_WORD) && isWhitespace([string characterAtIndex:index])) {
+        else if ((opt & MOPT_CHANGE_WORD) && isWhitespace([string characterAtIndex:index])) {
             // begins with space in case of 'cw'
             if ([self isWhitespace:pos] && ![self isWhitespace:pos + 1]) {
                 word_count++;
             }
         }
         else if (![self isWhitespaceOrNewline:pos]) {
-            if ((![self isWhitespaceOrNewline:pos + 1] && !(opt & BIGWORD) &&
+            if ((![self isWhitespaceOrNewline:pos + 1] && !(opt & MOPT_BIGWORD) &&
                  [self isKeyword:pos] != [self isKeyword:pos + 1])
                 || [self isWhitespaceOrNewline:pos + 1] ||
                 [self rangePlaceHolder:pos + 1 option:opt].location != NSNotFound) {
-                if ((opt & MOTION_OPTION_CHANGE_WORD) || pos != index) {
+                if ((opt & MOPT_CHANGE_WORD) || pos != index) {
                     word_count++;
                 }
             }
@@ -930,7 +943,7 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
         NSRange rph = [self rangePlaceHolder:pos option:opt];
         if (rph.location != NSNotFound) {
             // placeholder
-            if ((opt & MOTION_OPTION_CHANGE_WORD) || pos != index) {
+            if ((opt & MOPT_CHANGE_WORD) || pos != index) {
                 word_count++;
             }
             pos = NSMaxRange(rph) - 1;
@@ -940,22 +953,22 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
         }
         else if ([self isNewline:pos] && [self isNewline:pos + 1]) {
             // two NewLine
-            if (opt & MOTION_OPTION_CHANGE_WORD) {
+            if (opt & MOPT_CHANGE_WORD) {
                 word_count++;
             }
         }
-        else if ((opt & MOTION_OPTION_CHANGE_WORD) && isWhitespace([string characterAtIndex:index])) {
+        else if ((opt & MOPT_CHANGE_WORD) && isWhitespace([string characterAtIndex:index])) {
             // begins with space in case of 'cw'
             if ([self isWhitespace:pos] && ![self isWhitespace:pos + 1]) {
                 word_count++;
             }
         }
         else if (![self isWhitespaceOrNewline:pos]) {
-            if ((![self isWhitespaceOrNewline:pos + 1] && !(opt & BIGWORD) &&
+            if ((![self isWhitespaceOrNewline:pos + 1] && !(opt & MOPT_BIGWORD) &&
                  [self isKeyword:pos] != [self isKeyword:pos + 1])
                 || [self isWhitespaceOrNewline:pos + 1] ||
                 [self rangePlaceHolder:pos + 1 option:opt].location != NSNotFound) {
-                if ((opt & MOTION_OPTION_CHANGE_WORD) || pos != index) {
+                if ((opt & MOPT_CHANGE_WORD) || pos != index) {
                     word_count++;
                 }
             }
@@ -1235,7 +1248,7 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
     }
 
     NSUInteger p = index + 1; // Search from next character
-    if ((opt & MOTION_OPTION_SKIP_ADJACENT_CHAR) && 1 == count && ![self isEOF:p] &&
+    if ((opt & MOPT_SKIP_ADJACENT_CHAR) && 1 == count && ![self isEOF:p] &&
         [[self xvim_string] characterAtIndex:p] == character) {
         // Need to skip the character when it is found adjacent position.
         p++;
@@ -1269,7 +1282,7 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
     }
 
     NSUInteger p = index - 1; // Search from next character
-    if ((opt & MOTION_OPTION_SKIP_ADJACENT_CHAR) && 1 == count && 0 != p &&
+    if ((opt & MOPT_SKIP_ADJACENT_CHAR) && 1 == count && 0 != p &&
         [[self xvim_string] characterAtIndex:p] == character) {
         // Need to skip the character when it is found adjacent position.
         p--;
@@ -1303,7 +1316,7 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
     NSRange ret = NSMakeRange(NSNotFound, 0);
 
     NSRegularExpressionOptions options = NSRegularExpressionAnchorsMatchLines;
-    if (opt & SEARCH_CASEINSENSITIVE) {
+    if (opt & MOPT_SEARCH_CASEINSENSITIVE) {
         options |= NSRegularExpressionCaseInsensitive;
     }
     NSError* err = nil;
@@ -1325,7 +1338,7 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
     }
 
     // Then look for the position in range of [BOF,index] if SEARCH_WRAP
-    if (0 != count && opt & SEARCH_WRAP) {
+    if (0 != count && opt & MOPT_SEARCH_WRAP) {
         for (NSTextCheckingResult* result in matches) {
             if (result.range.location <= index) {
                 count--;
@@ -1353,7 +1366,7 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
     NSRange ret = NSMakeRange(NSNotFound, 0);
 
     NSRegularExpressionOptions options = NSRegularExpressionAnchorsMatchLines;
-    if (opt & SEARCH_CASEINSENSITIVE) {
+    if (opt & MOPT_SEARCH_CASEINSENSITIVE) {
         options |= NSRegularExpressionCaseInsensitive;
     }
     NSError* err = nil;
@@ -1375,7 +1388,7 @@ static NSUInteger xvim_sb_count_columns(xvim_string_buffer_t* sb, NSUInteger tab
     }
 
     // Then look for the position in range of [index,EOF] if SEARCH_WRAP
-    if (0 != count && opt & SEARCH_WRAP) {
+    if (0 != count && opt & MOPT_SEARCH_WRAP) {
         for (NSTextCheckingResult* result in [matches reverseObjectEnumerator]) {
             if (result.range.location >= index) {
                 count--;
@@ -1436,7 +1449,7 @@ unichar characterAtIndex(NSStringHelper*, NSInteger index);
 - (NSRange)currentWord:(NSUInteger)index count:(NSUInteger)count option:(MOTION_OPTION)opt
 {
     NSCharacterSet* wsSet = [NSCharacterSet whitespaceCharacterSet];
-    NSCharacterSet* wordSet = [[self class] wordCharSet:(opt & BIGWORD)];
+    NSCharacterSet* wordSet = [[self class] wordCharSet:(opt & MOPT_BIGWORD)];
     NSString* string = [self xvim_string];
 
     // We search by starting from index = insertionPoint + 1. If the character at the insertion
@@ -1480,7 +1493,7 @@ unichar characterAtIndex(NSStringHelper*, NSInteger index);
         end = seek_forwards(string, end, searchSet);
 
         // For inclusive mode, try to eat some more
-        if (!(opt & TEXTOBJECT_INNER)) {
+        if (!(opt & MOPT_TEXTOBJECT_INNER)) {
             NSInteger newEnd = end;
             if (end >= 0 && (NSUInteger)end < maxIndex) {
                 if (initialCharIsWs) {
@@ -2178,7 +2191,7 @@ NSInteger xv_findChar(NSString* string, NSInteger index, int repeatCount, char c
 
     if (range.length != 0) {
         // underscore textobject.
-        if (opt & TEXTOBJECT_INNER) {
+        if (opt & MOPT_TEXTOBJECT_INNER) {
             range = NSMakeRange(range.location + 1, range.length - 2);
         }
     }
@@ -2413,5 +2426,18 @@ NSInteger xv_findChar(NSString* string, NSInteger index, int repeatCount, char c
     return result;
 }
 
+- (BOOL)isHighSurrogate:(NSUInteger)index
+{
+    NSString* string = [self xvim_string];
+    const unichar uc = [self safetyCharacterAtIndex:index fromString:string];
+    return (0xd800 <= uc && uc <= 0xdbff);
+}
+
+- (BOOL)isLowSurrogate:(NSUInteger)index
+{
+    NSString* string = [self xvim_string];
+    const unichar uc = [self safetyCharacterAtIndex:index fromString:string];
+    return (0xdc00 <= uc && uc <= 0xdfff);
+}
 
 @end

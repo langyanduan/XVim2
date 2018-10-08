@@ -9,6 +9,8 @@
 #import "NSString+VimHelper.h"
 #import "NSTextStorage+VimOperation.h"
 #import "SourceCodeEditorViewProxy+Yank.h"
+#import "SourceCodeEditorViewProxy+XVim.h"
+#import "SourceCodeEditorViewProxy+Operations.h"
 #import "XVimMotion.h"
 
 @interface SourceCodeEditorViewProxy ()
@@ -19,7 +21,7 @@
 @property (strong) NSString* lastYankedText;
 @property TEXT_TYPE lastYankedType;
 - (void)xvim_moveCursor:(NSUInteger)pos preserveColumn:(BOOL)preserve;
-- (void)xvim_syncState;
+- (void)xvim_syncStateWithScroll:(BOOL)scroll;
 - (XVimRange)xvim_getMotionRange:(NSUInteger)current Motion:(XVimMotion*)motion;
 - (XVimSelection)_xvim_selectedBlock;
 - (NSRange)_xvim_selectedRange;
@@ -59,16 +61,16 @@
             return;
         }
         // We have to treat some special cases (same as delete)
-        if (motion.motion == MOTION_FORWARD && motion.info->reachedEndOfLine) {
+        if (motion.motion == MOTION_FORWARD && motion.info.reachedEndOfLine) {
             motion.type = CHARACTERWISE_INCLUSIVE;
         }
         if (motion.motion == MOTION_WORD_FORWARD) {
-            if ((motion.info->isFirstWordInLine && motion.info->lastEndOfLine != NSNotFound)) {
+            if ((motion.info.isFirstWordInLine && motion.info.lastEndOfLine != NSNotFound)) {
                 // Special cases for word move over a line break.
-                to.end = motion.info->lastEndOfLine;
+                to.end = motion.info.lastEndOfLine;
                 motion.type = CHARACTERWISE_INCLUSIVE;
             }
-            else if (motion.info->reachedEndOfLine) {
+            else if (motion.info.reachedEndOfLine) {
                 if (motion.type == CHARACTERWISE_EXCLUSIVE) {
                     motion.type = CHARACTERWISE_INCLUSIVE;
                 }
@@ -111,7 +113,7 @@
         // FIXME: Make them not to change text from register...
         text = [NSString stringWithString:text]; // copy string because the text may be changed with folloing delete if
                                                  // it is from the same register...
-        [self xvim_delete:XVIM_MAKE_MOTION(MOTION_NONE, CHARACTERWISE_INCLUSIVE, MOTION_OPTION_NONE, 1) andYank:YES];
+        [self xvim_delete:XVIM_MAKE_MOTION(MOTION_NONE, CHARACTERWISE_INCLUSIVE, MOPT_NONE, 1) andYank:YES];
         after = NO;
     }
 
@@ -189,7 +191,7 @@
 
 
     [self xvim_moveCursor:insertionPointAfterPut preserveColumn:NO];
-    [self xvim_syncState];
+    [self xvim_syncStateWithScroll:YES];
     [self xvim_changeSelectionMode:XVIM_VISUAL_NONE];
 }
 

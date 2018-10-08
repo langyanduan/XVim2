@@ -12,12 +12,13 @@
 #import "NSTextStorage+VimOperation.h"
 #import "SourceCodeEditorViewProxy+XVim.h"
 #import "SourceCodeEditorViewProxy.h"
+#import "SourceCodeEditorViewProxy+Scrolling.h"
 #import "XVim.h"
 #import "XVim2-Swift.h"
 #import "XVimMotion.h"
 #import "XVimOptions.h"
-//#import <SourceEditor/_TtC12SourceEditor23SourceEditorUndoManager.h>
 #import "XVimXcode.h"
+#import "_TtC15IDESourceEditor19IDESourceEditorView.h"
 
 @interface SourceCodeEditorViewProxy ()
 @property (weak) _TtC15IDESourceEditor19IDESourceEditorView* sourceCodeEditorView;
@@ -205,13 +206,13 @@
         }
     }
     //[self setNeedsDisplay:YES];
-    [self xvim_syncState];
+    [self xvim_syncStateWithScroll:YES];
 }
 
 - (void)xvim_moveToPosition:(XVimPosition)pos
 {
     [self xvim_moveCursor:[self xvim_indexOfLineNumber:pos.line column:pos.column] preserveColumn:NO];
-    [self xvim_syncState];
+    [self xvim_syncStateWithScroll:YES];
 }
 
 - (void)xvim_moveCursor:(NSUInteger)pos preserveColumn:(BOOL)preserve
@@ -240,7 +241,7 @@
         self.preservedColumn = [self.textStorage xvim_columnOfIndex:self.insertionPoint];
     }
 
-    DEBUG_LOG(@"[%p]New Insertion Point:%d   Preserved Column:%d", self, self.insertionPoint, self.preservedColumn);
+    //DEBUG_LOG(@"[%p]New Insertion Point:%d   Preserved Column:%d", self, self.insertionPoint, self.preservedColumn);
 }
 
 /**
@@ -292,10 +293,13 @@
     }
 }
 
-
--(void)xvim_syncStateWithScroll : (BOOL)scroll
-{
-    //DEBUG_LOG(@"[%p]IP:%d", self, self.insertionPoint);
+/**
+ * Applies internal state to underlying view (self).
+ * This update self's property and applies the visual effect on it.
+ * All the state need to express Vim is held by this class and
+ * we use self to express it visually.
+ **/
+-(void)xvim_syncStateWithScroll: (BOOL)scroll {
     self.xvim_lockSyncStateFromView = YES;
     // Reset current selection
     if (self.cursorMode == CURSOR_MODE_COMMAND) {
@@ -311,15 +315,6 @@
     self.xvim_lockSyncStateFromView = NO;
 }
 
-
-/**
- * Applies internal state to underlying view (self).
- * This update self's property and applies the visual effect on it.
- * All the state need to express Vim is held by this class and
- * we use self to express it visually.
- **/
--(void)xvim_syncState { [self xvim_syncStateWithScroll:YES]; }
-
 -(void)xvim_syncStateFromView
 {
     //TRACE_LOG(@"[%p]ENTER", self);
@@ -328,7 +323,7 @@
         return;
     }
     NSRange r = [self selectedRange];
-    DEBUG_LOG(@"Selected Range(TotalLen:%d): Loc:%d Len:%d", self.string.length, r.location, r.length);
+    //DEBUG_LOG(@"Selected Range(TotalLen:%d): Loc:%d Len:%d", self.string.length, r.location, r.length);
     self.selectionMode = XVIM_VISUAL_NONE;
     [self xvim_moveCursor:r.location preserveColumn:NO];
     self.selectionBegin = self.insertionPoint;
@@ -542,7 +537,7 @@
         begin = [self.textStorage endOfWordsBackward:begin count:motion.count option:motion.option];
         break;
     case MOTION_LINE_FORWARD:
-        if (motion.option & DISPLAY_LINE) {
+        if (motion.option & MOPT_DISPLAY_LINE) {
             end = [self xvim_displayNextLine:begin
                                       column:self.preservedColumn
                                        count:motion.count
@@ -556,7 +551,7 @@
         }
         break;
     case MOTION_LINE_BACKWARD:
-        if (motion.option & DISPLAY_LINE) {
+        if (motion.option & MOPT_DISPLAY_LINE) {
             end = [self xvim_displayPrevLine:begin
                                       column:self.preservedColumn
                                        count:motion.count
@@ -576,7 +571,7 @@
         }
         break;
     case MOTION_END_OF_LINE:
-        tmpPos = [self.textStorage nextLine:begin column:0 count:motion.count - 1 option:MOTION_OPTION_NONE];
+        tmpPos = [self.textStorage nextLine:begin column:0 count:motion.count - 1 option:MOPT_NONE];
         end = [self xvim_endOfLine:tmpPos];
         if (end == NSNotFound) {
             end = tmpPos;
@@ -598,13 +593,13 @@
         end = [self.textStorage nextCharacterInLine:begin
                                               count:motion.count
                                           character:motion.character
-                                             option:MOTION_OPTION_NONE];
+                                             option:MOPT_NONE];
         break;
     case MOTION_PREV_CHARACTER:
         end = [self.textStorage prevCharacterInLine:begin
                                               count:motion.count
                                           character:motion.character
-                                             option:MOTION_OPTION_NONE];
+                                             option:MOPT_NONE];
         break;
     case MOTION_TILL_NEXT_CHARACTER:
         end = [self.textStorage nextCharacterInLine:begin
@@ -683,8 +678,8 @@
                                              count:motion.count
                                             option:motion.option]
                           .location;
-        if (end == NSNotFound && !(motion.option & SEARCH_WRAP)) {
-            NSRange r = [self xvim_currentWord:MOTION_OPTION_NONE];
+        if (end == NSNotFound && !(motion.option & MOPT_SEARCH_WRAP)) {
+            NSRange r = [self xvim_currentWord:MOPT_NONE];
             end = r.location;
         }
         break;
@@ -694,8 +689,8 @@
                                               count:motion.count
                                              option:motion.option]
                           .location;
-        if (end == NSNotFound && !(motion.option & SEARCH_WRAP)) {
-            NSRange r = [self xvim_currentWord:MOTION_OPTION_NONE];
+        if (end == NSNotFound && !(motion.option & MOPT_SEARCH_WRAP)) {
+            NSRange r = [self xvim_currentWord:MOPT_NONE];
             end = r.location;
         }
         break;
@@ -706,7 +701,7 @@
         range = [self.textStorage currentCamelCaseWord:begin count:motion.count option:motion.option];
         break;
     case TEXTOBJECT_BRACES:
-        range = xv_current_block(self.string, current, motion.count, !(motion.option & TEXTOBJECT_INNER), '{', '}');
+        range = xv_current_block(self.string, current, motion.count, !(motion.option & MOPT_TEXTOBJECT_INNER), '{', '}');
         break;
     case TEXTOBJECT_PARAGRAPH:
         // Not supported
@@ -727,28 +722,28 @@
         range = NSMakeRange(start, end - start);
         break;
     case TEXTOBJECT_PARENTHESES:
-        range = xv_current_block(self.string, current, motion.count, !(motion.option & TEXTOBJECT_INNER), '(', ')');
+        range = xv_current_block(self.string, current, motion.count, !(motion.option & MOPT_TEXTOBJECT_INNER), '(', ')');
         break;
     case TEXTOBJECT_SENTENCE:
         // Not supported
         break;
     case TEXTOBJECT_ANGLEBRACKETS:
-        range = xv_current_block(self.string, current, motion.count, !(motion.option & TEXTOBJECT_INNER), '<', '>');
+        range = xv_current_block(self.string, current, motion.count, !(motion.option & MOPT_TEXTOBJECT_INNER), '<', '>');
         break;
     case TEXTOBJECT_SQUOTE:
-        range = xv_current_quote(self.string, current, motion.count, !(motion.option & TEXTOBJECT_INNER), '\'');
+        range = xv_current_quote(self.string, current, motion.count, !(motion.option & MOPT_TEXTOBJECT_INNER), '\'');
         break;
     case TEXTOBJECT_DQUOTE:
-        range = xv_current_quote(self.string, current, motion.count, !(motion.option & TEXTOBJECT_INNER), '\"');
+        range = xv_current_quote(self.string, current, motion.count, !(motion.option & MOPT_TEXTOBJECT_INNER), '\"');
         break;
     case TEXTOBJECT_TAG:
         // Not supported
         break;
     case TEXTOBJECT_BACKQUOTE:
-        range = xv_current_quote(self.string, current, motion.count, !(motion.option & TEXTOBJECT_INNER), '`');
+        range = xv_current_quote(self.string, current, motion.count, !(motion.option & MOPT_TEXTOBJECT_INNER), '`');
         break;
     case TEXTOBJECT_SQUAREBRACKETS:
-        range = xv_current_block(self.string, current, motion.count, !(motion.option & TEXTOBJECT_INNER), '[', ']');
+        range = xv_current_block(self.string, current, motion.count, !(motion.option & MOPT_TEXTOBJECT_INNER), '[', ']');
         break;
     case MOTION_LINE_COLUMN:
         end = [self xvim_indexOfLineNumber:motion.line column:motion.column];
@@ -772,7 +767,7 @@
         }
     }
     XVimRange r = XVimMakeRange(begin, end);
-    TRACE_LOG(@"range location:%u  length:%u", r.begin, r.end - r.begin + 1);
+    //TRACE_LOG(@"range location:%u  length:%u", r.begin, r.end - r.begin + 1);
     return r;
 }
 
@@ -840,7 +835,7 @@
 
 -(NSRange)xvim_currentWord : (MOTION_OPTION)opt
 {
-    return [self.textStorage currentWord:self.insertionPoint count:1 option:opt | TEXTOBJECT_INNER];
+    return [self.textStorage currentWord:self.insertionPoint count:1 option:opt | MOPT_TEXTOBJECT_INNER];
 }
 
 
@@ -979,13 +974,11 @@
         if (![self.textStorage isBOL:self.insertionPoint]) {
             [self xvim_moveCursor:self.insertionPoint - 1 preserveColumn:NO];
         }
-        [self xvim_syncState];
+        [self xvim_syncStateWithScroll:YES];
     }
 }
 
 #pragma mark Status
-
--(NSUInteger)xvim_numberOfLinesInVisibleRect { return self.sourceCodeEditorViewWrapper.linesPerPage; }
 
 -(NSUInteger)xvim_displayNextLine : (NSUInteger)index column : (NSUInteger)column count : (NSUInteger)count option
     : (MOTION_OPTION)opt
@@ -1008,10 +1001,7 @@
     for (NSUInteger i = 0; i < count; i++) {
         [self.sourceCodeEditorView moveUp:self];
     }
-    // TODO
-    // XCODE93
-    //NSRange range = self.sourceCodeEditorView.contentView.accessibilityColumnIndexRange
-    NSRange range = NSMakeRange(0, 0);
+    NSRange range = self.sourceCodeEditorView.accessibilityColumnIndexRange;
     return [self.sourceCodeEditorView
                        characterRangeForLineRange:NSMakeRange(self.sourceCodeEditorView
                                                                           .accessibilityInsertionPointLineNumber,
@@ -1025,20 +1015,18 @@
 
 -(void)xvim_registerPositionForUndo : (NSUInteger)pos
 {
-    __weak SourceCodeEditorViewProxy* weakSelf = self;
     // XCODE93
     /*
-    [self.undoManager registerUndoWithTitle:@"BLAH"
-                                  redoTitle:@"REBLAH"
-                                  operation:^(void) {
-                                      SourceCodeEditorViewProxy* SELF = weakSelf;
-                                      if (!SELF)
-                                          return;
-                                      XVimMotion* m = XVIM_MAKE_MOTION(MOTION_POSITION, DEFAULT_MOTION_TYPE,
-                                                                       MOTION_OPTION_NONE, 1);
-                                      m.position = pos;
-                                      [SELF xvim_move:m];
-                                  }];
+    __weak SourceCodeEditorViewProxy* weakSelf = self;
+    [self.undoManager registerUndoWithTarget:self handler:^(id _Nonnull target){
+        SourceCodeEditorViewProxy* SELF = weakSelf;
+        if (!SELF)
+            return;
+        XVimMotion* m = XVIM_MAKE_MOTION(MOTION_POSITION, DEFAULT_MOTION_TYPE,
+                                         MOPT_NONE, 1);
+        m.position = pos;
+        [SELF xvim_move:m];
+    }];
      */
 }
 
@@ -1065,6 +1053,7 @@
         range = [self.textStorage searchRegexBackward:regex from:self.insertionPoint count:count option:opt];
     }
     if (range.location != NSNotFound) {
+        clamp(range.location, 0, self.string.length);
         [self scrollRangeToVisible:range];
         [self showFindIndicatorForRange:range];
     }
@@ -1090,7 +1079,7 @@
     }
 
     NSRegularExpressionOptions r_opts = NSRegularExpressionAnchorsMatchLines;
-    if (opt & SEARCH_CASEINSENSITIVE) {
+    if (opt & MOPT_SEARCH_CASEINSENSITIVE) {
         r_opts |= NSRegularExpressionCaseInsensitive;
     }
 

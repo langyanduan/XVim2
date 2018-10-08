@@ -7,7 +7,10 @@
 //
 
 #import "NSTextStorage+VimOperation.h"
+#import "SourceViewProtocol.h"
 #import "SourceCodeEditorViewProxy+Scrolling.h"
+#import "SourceCodeEditorViewProxy+XVim.h"
+#import "SourceCodeEditorViewProxy+Yank.h"
 
 @interface SourceCodeEditorViewProxy ()
 @property (readwrite) NSUInteger selectionBegin;
@@ -15,7 +18,6 @@
 @property (readwrite) NSUInteger preservedColumn;
 @property (readwrite) BOOL selectionToEOL;
 - (void)xvim_moveCursor:(NSUInteger)pos preserveColumn:(BOOL)preserve;
-- (void)xvim_syncState;
 - (void)xvim_syncStateWithScroll:(BOOL)scroll;
 @end
 
@@ -30,12 +32,12 @@
             pos = self.textStorage.length;
         }
         [self xvim_moveCursor:pos preserveColumn:NO];
-        [self xvim_syncState];
+        [self xvim_syncStateWithScroll:YES];
     }
     if (fnb) {
         NSUInteger pos = [self.textStorage xvim_firstNonblankInLineAtIndex:self.insertionPoint allowEOL:YES];
         [self xvim_moveCursor:pos preserveColumn:NO];
-        [self xvim_syncState];
+        [self xvim_syncStateWithScroll:YES];
     }
 }
 
@@ -58,7 +60,7 @@
     }
 
     LineRange visibleLineRange = [self xvim_visibleLineRange];
-    
+
     NSInteger scrollToLine = (numScrollLines < 0) ? (visibleLineRange.topLine + numScrollLines) : (visibleLineRange.bottomLine + numScrollLines);
     clamp(scrollToLine, 0, self.lineCount - 1);
 
@@ -67,7 +69,23 @@
     [self scrollRangeToVisible:scrollToCharRange];
 
     // Update cursor
-    cursorLine += numScrollLines;
+    switch (type) {
+      case XVIM_SCROLL_TYPE_LINE: {
+        NSInteger numLinesActuallyScrolled;
+        if (numScrollLines < 0) {
+          numLinesActuallyScrolled = -MIN(visibleLineRange.topLine+1, -numScrollLines);
+        } else {
+          numLinesActuallyScrolled = MIN(self.lineCount - visibleLineRange.bottomLine, numScrollLines);
+        }
+        clamp(cursorLine,
+              visibleLineRange.topLine + numLinesActuallyScrolled,
+              visibleLineRange.bottomLine + numLinesActuallyScrolled);
+        break;
+      }
+      default:
+        cursorLine += numScrollLines;
+        break;
+    }
     clamp(cursorLine, 0, self.lineCount - 1);
 
     _auto newCharRange = [self characterRangeForLineRange:NSMakeRange(cursorLine, 1)];
@@ -76,7 +94,7 @@
                 [self.textStorage xvim_firstNonblankInLineAtIndex:newCharRange.location allowEOL:YES];
 
     [self xvim_moveCursor:cursorIndexAfterScroll preserveColumn:NO];
-    [self xvim_syncState];
+    [self xvim_syncStateWithScroll:YES];
 }
 
 typedef struct {
@@ -105,18 +123,20 @@ typedef struct {
     return r;
 }
 
+- (NSInteger)linesPerPage {
+    LineRange linerange = [self xvim_visibleLineRange];
+    return linerange.bottomLine - linerange.topLine;
+}
+
 - (void)xvim_scrollBottom:(NSUInteger)lineNumber firstNonblank:(BOOL)fnb
 { // zb / z-
-    LineRange range = [self xvim_visibleLineRange];
-    NSUInteger currentLine = [self currentLineNumber];
-    NSInteger numScrollLines = (NSInteger)(currentLine - 1 - range.bottomLine);
     
-    NSInteger scrollToLine = (numScrollLines < 0) ? (range.topLine + numScrollLines) : (range.bottomLine + numScrollLines);
-    clamp(scrollToLine, 0, self.lineCount - 1);
+    [self xvim_scrollCenter:lineNumber firstNonblank:fnb];
     
-    _auto scrollToCharRange = [self characterRangeForLineRange:NSMakeRange(scrollToLine, 1)];
-    clamp(scrollToCharRange.location, 0, self.string.length);
-    [self scrollRangeToVisible:scrollToCharRange];
+    NSInteger linesPerPage = [self linesPerPage];
+    for (int i = 0; i < linesPerPage/2; ++i){
+        [self scrollLineUp:self];
+    }
 }
 
 - (void)xvim_scrollCenter:(NSUInteger)lineNumber firstNonblank:(BOOL)fnb
@@ -134,21 +154,18 @@ typedef struct {
 
 - (void)xvim_scrollTop:(NSUInteger)lineNumber firstNonblank:(BOOL)fnb
 { // zt / z<CR>
-    LineRange range = [self xvim_visibleLineRange];
-    NSUInteger currentLine = [self currentLineNumber];
-    NSInteger numScrollLines = (NSInteger)(currentLine - 1 - range.topLine);
     
-    NSInteger scrollToLine = (numScrollLines < 0) ? (range.topLine + numScrollLines) : (range.bottomLine + numScrollLines);
-    clamp(scrollToLine, 0, self.lineCount - 1);
-    
-    _auto scrollToCharRange = [self characterRangeForLineRange:NSMakeRange(scrollToLine, 1)];
-    clamp(scrollToCharRange.location, 0, self.string.length);
-    [self scrollRangeToVisible:scrollToCharRange];
+    // first, scroll for cursor visible
+    [self xvim_scrollCenter:lineNumber firstNonblank:fnb];
+
+    NSInteger linesPerPage = [self linesPerPage];
+    for (int i = 0; i < linesPerPage/2; ++i){
+        [self scrollLineDown:self];
+    }
 }
 
 - (void)xvim_scrollTo:(NSUInteger)insertionPoint
 {
-    //_auto rng = [self.sourceCodeEditorView lineRangeForCharacterRange:NSMakeRange(insertionPoint, 0)];
     [self scrollRangeToVisible:NSMakeRange(insertionPoint, 0)];
 }
 
